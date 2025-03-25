@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wisdomizer - Your AI Assistant</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css"
+    integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <link href="/static/css/style.css" rel="stylesheet" type="text/css" />
+  <script src="/static/js/jquery.min.js"></script>
+  <script src="/static/js/notification.js"></script>
+  <script src="/static/js/index/index.js"></script>
+
+  <style>
+    .gradient-text {
+      background: linear-gradient(to right, #67e8f9, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .retro-grid::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, rgba(103, 232, 249, 0.1) 0%, transparent 80%);
+      z-index: -1;
+    }
+
+    .message-time {
+      font-size: 0.7rem;
+      opacity: 0.6;
+    }
+
+    .typing-indicator span {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: currentColor;
+      border-radius: 50%;
+      margin: 0 2px;
+      opacity: 0.7;
+      animation: typing 1.4s infinite ease-in-out both;
+    }
+
+    .typing-indicator span:nth-child(1) {
+      animation-delay: 0s;
+    }
+
+    .typing-indicator span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-indicator span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+      50% {
+        transform: scale(1.5);
+        opacity: 1;
+      }
+    }
+
+    .msg-user {
+      border-radius: 1.5rem 1.5rem 0 1.5rem;
+    }
+
+    .msg-ai {
+      border-radius: 1.5rem 1.5rem 1.5rem 0;
+    }
+
+    .ai-thinking {
+      transform: translateY(10px);
+      opacity: 0;
+      animation: thinking 0.5s forwards;
+    }
+
+    @keyframes thinking {
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+    
+    .file-preview {
+      border-radius: 0.5rem;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(107, 114, 128, 0.3);
+    }
+    
+    .file-preview .file-remove {
+      position: absolute;
+      top: 0.25rem;
+      right: 0.25rem;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 9999px;
+      width: 1.5rem;
+      height: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .file-preview:hover .file-remove {
+      opacity: 1;
+    }
+    
+    /* Mobile sidebar */
+    #mobile-topics-sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      z-index: 50;
+      width: 280px;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease-in-out;
+    }
+    
+    #mobile-topics-sidebar.show {
+      transform: translateX(0);
+    }
+    
+    .sidebar-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 40;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease-in-out;
+      backdrop-filter: blur(2px);
+    }
+    
+    .sidebar-backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    /* Topic rename input */
+    .topic-rename-input {
+      width: 100%;
+      background: rgba(31, 41, 55, 0.8);
+      border: 1px solid rgba(75, 85, 99, 0.5);
+      border-radius: 0.375rem;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
+      color: white;
+      outline: none;
+    }
+    
+    .topic-rename-input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+    }
+  
+  </style>
+</head>
+
+<body class="bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100 font-['Poppins'] min-h-screen retro-grid flex flex-col">
+  <!-- Mobile sidebar backdrop -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  
+  <!-- Mobile topics sidebar -->
+  <div id="mobile-topics-sidebar" class="flex flex-col bg-gray-900/90 border-r border-gray-700/50 backdrop-blur-sm h-full">
+    <div class="flex items-center justify-between p-3 border-b border-gray-700/50">
+      <h2 class="text-lg font-semibold gradient-text">Topics</h2>
+      <button id="close-sidebar-btn" class="p-1 text-gray-400 hover:text-gray-200">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    
+    <!-- Duplicate of desktop sidebar content -->
+    <div class="p-3 border-b border-gray-700/50">
+      <button id="mobile-new-chat-btn" class="btn btn-sm w-full bg-gradient-to-r from-blue-500 to-purple-600 border-0 text-white hover:shadow-lg hover:shadow-purple-500/20 transition-all">
+        <i class="fas fa-plus mr-2"></i> New chat
+      </button>
+    </div>
+    
+    <!-- Topics list for mobile -->
+    <div class="overflow-y-auto flex-grow p-2 space-y-1">
+      <div class="text-xs uppercase text-gray-500 font-semibold px-2 pt-2 pb-1">Recent topics</div>
+      
+      {{range .chats}}
+      <div class="topic-item flex items-center gap-2 p-2 rounded-lg hover:bg-gray-700/30 text-gray-300 cursor-pointer group" data-uuid="{{.UUID}}">
+        <i class="fas fa-comment-alt text-xs text-gray-500"></i>
+        <span class="topic-name truncate flex-grow text-sm">{{.Title}}</span>
+        <div class="topic-actions opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+          <button class="topic-rename p-1 text-gray-400 hover:text-gray-200"><i class="fas fa-pencil-alt text-xs"></i></button>
+          <button class="topic-delete p-1 text-gray-400 hover:text-gray-200"><i class="fas fa-trash-alt text-xs"></i></button>
+        </div>
+      </div>
+      {{end}}
+    </div>
+    
+    <!-- Sidebar footer for mobile -->
+    <div class="p-3 border-t border-gray-700/50 text-xs text-gray-500">
+      <div class="flex items-center justify-between">
+        <span>Wisdomizer</span>
+      </div>
+    </div>
+  </div>
+  <!-- Header with logo -->
+  <header class="border-b border-gray-700/50 backdrop-blur-sm bg-gray-900/80 py-3 px-4 shadow-lg sticky top-0 z-10">
+    <div class="flex items-center justify-between max-w-6xl mx-auto">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+          <i class="fas fa-brain text-white text-lg flex items-center justify-center w-full h-full"></i>
+        </div>
+        <h1 class="text-xl font-bold gradient-text">Wisdomizer</h1>
+      </div>
+      
+      <!-- User status indicator -->
+      <div class="flex items-center gap-1 text-xs">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="opacity-70">Active</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="flex-grow flex md:flex-row flex-col w-full">
+    <!-- Topics sidebar (hidden on mobile) -->
+    <div id="topics-sidebar" class="hidden md:flex flex-col w-64 bg-gray-900/80 border-r border-gray-700/50 backdrop-blur-sm overflow-hidden">
+      <!-- New chat button -->
+      <div class="p-3 border-b border-gray-700/50">
+        <button id="new-chat-btn" class="btn btn-sm w-full bg-gradient-to-r from-blue-500 to-purple-600 border-0 text-white hover:shadow-lg hover:shadow-purple-500/20 transition-all">
+          <i class="fas fa-plus mr-2"></i> New chat
+        </button>
+      </div>
+      
+      <!-- Topics list -->
+      <div class="overflow-y-auto flex-grow p-2 space-y-1">
+        <div class="text-xs uppercase text-gray-500 font-semibold px-2 pt-2 pb-1">Recent topics</div>
+        
+        {{range .chats}}
+        <div class="topic-item flex items-center gap-2 p-2 rounded-lg hover:bg-gray-700/30 text-gray-300 cursor-pointer group" data-uuid="{{.UUID}}">
+          <i class="fas fa-comment-alt text-xs text-gray-500"></i>
+          <span class="topic-name truncate flex-grow text-sm">{{.Title}}</span>
+          <div class="topic-actions opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+            <button class="topic-rename p-1 text-gray-400 hover:text-gray-200"><i class="fas fa-pencil-alt text-xs"></i></button>
+            <button class="topic-delete p-1 text-gray-400 hover:text-gray-200"><i class="fas fa-trash-alt text-xs"></i></button>
+          </div>
+        </div>
+        {{end}}
+      </div>
+      
+      <!-- Sidebar footer -->
+      <div class="p-3 border-t border-gray-700/50 text-xs text-gray-500">
+        <div class="flex items-center justify-between">
+          <span>Wisdomizer</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Chat container -->
+    <div class="flex-grow flex flex-col max-w-4xl mx-auto w-full h-[calc(100vh-4rem)] overflow-hidden">
+      <!-- Mobile sidebar toggle -->
+      <div class="md:hidden flex-shrink-0 flex items-center border-b border-gray-700/50 backdrop-blur-sm bg-gray-900/80 py-2 px-4">
+        <button id="mobile-sidebar-toggle" class="p-2 text-gray-400 hover:text-gray-200">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+      
+      <!-- Messages container -->
+      <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-6">
+      <!-- System welcome message -->
+      <div class="chat chat-start">
+        <div class="chat-image">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 flex items-center justify-center p-0">
+            <i class="fas fa-robot text-white text-sm transform translate-y-[1px]"></i>
+          </div>
+        </div>
+        <div class="chat-header opacity-70 text-xs">
+          Wisdomizer <span class="message-time">Just now</span>
+        </div>
+        <div class="chat-bubble msg-ai bg-gray-700/70 text-gray-100 shadow-md border border-gray-600/30 backdrop-blur-sm">
+          <p>Hello! I'm Wisdomizer, your personal AI assistant. How can I help you today?</p>
+        </div>
+        <div class="chat-footer opacity-70 text-xs">
+          Delivered
+        </div>
+      </div>
+      
+      <!-- Messages will be added here dynamically -->
+    </div>
+    
+    <!-- Input area -->
+    <div class="flex-shrink-0 border-t border-gray-700/50 backdrop-blur-sm bg-gray-800/80 p-4">
+      <div class="flex flex-col gap-2">
+        <!-- File preview area (hidden by default) -->
+        <div id="file-preview-container" class="hidden mb-2">
+          <div class="file-preview bg-gray-700/30 p-2 max-w-[300px]">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-file text-blue-400"></i>
+              <span class="file-name text-sm truncate flex-1">filename.pdf</span>
+              <span class="file-size text-xs opacity-70">2.3MB</span>
+              <div class="file-remove text-gray-300 hover:text-white">
+                <i class="fas fa-times text-xs"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="relative">
+          <textarea id="message-input" 
+            class="textarea w-full bg-gray-700/50 border border-gray-600/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 rounded-2xl pr-12 min-h-[60px] max-h-[200px] resize-y placeholder-gray-400 text-gray-100"
+            placeholder="Message Wisdomizer..."></textarea>
+          <button id="send-button" class="absolute bottom-3 right-3 bg-gradient-to-r from-blue-500 to-purple-600 p-2 rounded-full hover:shadow-lg hover:shadow-purple-500/20 transition-all duration-300 hover:scale-105 flex items-center justify-center w-10 h-10">
+            <i class="fas fa-paper-plane text-white text-sm"></i>
+          </button>
+        </div>
+        <div class="flex justify-between items-center text-xs text-gray-400 px-2">
+          <div class="flex items-center gap-3">
+            <span id="character-count">0/4000</span>
+            <label for="file-upload" class="cursor-pointer flex items-center gap-1 hover:text-gray-200 transition-colors">
+              <i class="fas fa-paperclip"></i>
+              <span>Upload</span>
+              <input id="file-upload" type="file" class="hidden" />
+            </label>
+          </div>
+          <div class="flex gap-4">
+            <button id="clear-button" class="flex items-center gap-1 hover:text-gray-200 transition-colors">
+              <i class="fas fa-trash-alt"></i>
+              <span>Clear chat</span>
+            </button>
+            <button id="regenerate-button" class="flex items-center gap-1 hover:text-gray-200 transition-colors">
+              <i class="fas fa-redo-alt"></i>
+              <span>Regenerate</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-3 px-4 text-center text-xs text-gray-500 border-t border-gray-700/50 backdrop-blur-sm bg-gray-900/80">
+    <p>&copy; 2025 Wisdomizer. Powered by AI. All rights reserved.</p>
+  </footer>
+</body>
+
+</html>
