@@ -1,0 +1,2 @@
+# wisdomizer
+Brainstromer Assistant
