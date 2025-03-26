@@ -102,7 +102,7 @@ $(document).ready(function() {
         startOnLoad: true,
         theme: 'dark',
         securityLevel: 'loose',
-        logLevel: 3, // Error level to reduce console noise
+        logLevel: 5 , // Error level to reduce console noise
         fontFamily: 'Poppins, sans-serif',
         flowchart: {
           htmlLabels: true,
