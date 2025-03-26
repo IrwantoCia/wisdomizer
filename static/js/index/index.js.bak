@@ -53,54 +53,6 @@ $(document).ready(function() {
   const newChatBtn = $('#new-chat-btn');
   const mobileNewChatBtn = $('#mobile-new-chat-btn');
   
-  // Fix for mobile menu after a short delay to ensure DOM is fully loaded
-  setTimeout(function() {
-    console.log('Checking mobile menu functionality...');
-    const hamburgerBtn = document.getElementById('mobile-sidebar-toggle');
-    
-    if (hamburgerBtn) {
-      console.log('Found hamburger button, adding click handler');
-      
-      // Add additional direct click handler
-      hamburgerBtn.onclick = function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Hamburger button clicked (direct onclick)');
-        
-        const sidebar = document.getElementById('mobile-topics-sidebar');
-        const backdrop = document.getElementById('sidebar-backdrop');
-        
-        if (sidebar && backdrop) {
-          sidebar.classList.add('show');
-          backdrop.classList.add('show');
-          console.log('Added show classes to sidebar and backdrop');
-        } else {
-          console.error('Could not find sidebar or backdrop elements');
-        }
-      };
-      
-      // Also add a direct event listener in case onclick doesn't work
-      hamburgerBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Hamburger button clicked (direct event listener)');
-        
-        const sidebar = document.getElementById('mobile-topics-sidebar');
-        const backdrop = document.getElementById('sidebar-backdrop');
-        
-        if (sidebar && backdrop) {
-          sidebar.classList.add('show');
-          backdrop.classList.add('show');
-          console.log('Added show classes to sidebar and backdrop (from event listener)');
-        } else {
-          console.error('Could not find sidebar or backdrop elements (from event listener)');
-        }
-      });
-    } else {
-      console.error('Could not find hamburger button by ID');
-    }
-  }, 1000);
-  
   // System prompt elements
   const editSystemPromptBtn = $('#edit-system-prompt-btn');
   const systemPromptDisplay = $('#system-prompt-display');
@@ -117,85 +69,8 @@ $(document).ready(function() {
   const mobileCancelSystemPromptBtn = $('#mobile-cancel-system-prompt');
   const mobileSaveSystemPromptBtn = $('#mobile-save-system-prompt');
   
-  // Initialize Mermaid.js
-  console.log('Initializing Mermaid with our custom config');
-  if (typeof mermaid !== 'undefined') {
-    // Configure mermaid with optimal settings
-    mermaid.initialize({
-      startOnLoad: false,  // We will manually control when diagrams are rendered
-      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-      logLevel: 3, // Info level - helps with debugging
-      securityLevel: 'loose',
-      fontFamily: 'Poppins, sans-serif',
-      flowchart: {
-        htmlLabels: true,
-        useMaxWidth: true,
-        curve: 'linear'
-      }
-    });
-    
-    // Add mermaid error styles
-    addMermaidErrorStyles();
-    
-    // Show notification that Mermaid rendering has been improved
-    setTimeout(() => {
-      createNotification('Mermaid diagram rendering has been improved', 'info');
-    }, 1000);
-    
-    // Override mermaid.init to add our own logging for debugging
-    const originalInit = mermaid.init;
-    mermaid.init = function(config, nodes) {
-      console.log('mermaid.init called with:', { 
-        config, 
-        nodesCount: nodes ? (nodes.length || 'unknown') : 'all'
-      });
-      try {
-        return originalInit.apply(this, arguments);
-      } catch (err) {
-        console.error('Error in mermaid.init:', err);
-        throw err;
-      }
-    };
-    
-    // Process any diagrams already in the page with some delay
-    // to ensure everything is loaded
-    setTimeout(() => {
-      console.log('Running initial Mermaid diagram processing');
-      
-      // First run debug to see what's in the DOM
-      debugMermaidDiagrams();
-      
-      // Then try to process
-      processMermaidDiagrams();
-      
-      // Schedule another check in case first attempt missed some
-      setTimeout(() => {
-        const unprocessed = Array.from(document.querySelectorAll('.mermaid')).filter(div => {
-          return div.getAttribute('data-processed') !== 'true';
-        });
-        
-        if (unprocessed.length > 0) {
-          console.log(`Found ${unprocessed.length} diagrams still unprocessed, trying again...`);
-          processMermaidDiagrams();
-          
-          // Try direct Mermaid init as a last resort
-          setTimeout(() => {
-            try {
-              console.log('Attempting direct mermaid.init call...');
-              mermaid.init(undefined, unprocessed);
-            } catch (e) {
-              console.error('Error in direct mermaid.init call:', e);
-            }
-          }, 300);
-        }
-      }, 500);
-    }, 500);
-    
-    // Enable Mermaid observer
-    enableMermaidObserver();
-  } else {
-    console.warn('Mermaid library not found');
-  }
+  // Add mermaid error styles
+  addMermaidErrorStyles();
   
   // State variables
   let currentTopic = "Getting started with Wisdomizer";
@@ -261,15 +136,33 @@ $(document).ready(function() {
         }, 2000);
       }, 1000);
       
-      // Call forceMermaidRendering once at the start 
-      setTimeout(() => {
-        processMermaidDiagrams();
-      }, 1000);
+      // Set up a MutationObserver to detect when new messages are added
+      const messagesObserver = new MutationObserver((mutations) => {
+        // Check if any of the mutations involve adding nodes
+        const hasDiagramsToProcess = mutations.some(mutation => {
+          return mutation.type === 'childList' && mutation.addedNodes.length > 0;
+        });
+        
+        if (hasDiagramsToProcess) {
+          console.log('New content detected in messages container');
+          // Wait a short time to let the DOM settle
+          setTimeout(() => {
+            processMermaidDiagrams();
+            // Try again with direct rendering after a short delay
+            setTimeout(() => {
+              forceMermaidRendering();
+            }, 200);
+          }, 100);
+        }
+      });
       
-      // Enable Mermaid observer to automatically process diagrams when they're added
-      enableMermaidObserver();
+      // Start observing the messages container
+      messagesObserver.observe(messagesContainer[0], {
+        childList: true,
+        subtree: true
+      });
       
-      console.log('Mermaid initialization complete');
+      console.log('Mutation observer set up for messages container');
     } else {
       console.warn('Mermaid.js not loaded. Diagram rendering is disabled.');
     }
@@ -309,52 +202,13 @@ $(document).ready(function() {
     renderer.code = function(code, language, escaped) {
       // For mermaid diagrams, create a div with the mermaid class
       if (language === 'mermaid') {
-        console.log('Detected mermaid code block, creating diagram container', { 
-          codeLength: code.length,
-          codePreview: code.substring(0, 50),
-          timestamp: Date.now()
-        });
+        console.log('Detected mermaid code block, creating diagram container');
         
         // Create a unique ID for this diagram
         const id = `mermaid-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         
-        // Clean the mermaid code - remove any HTML entities
-        const cleanedCode = decodeHtmlEntities(code.trim());
-        
         // Store the original code in a data attribute for reliable retrieval
-        // Make sure content is properly encoded to avoid HTML interpretation issues
-        const encodedContent = encodeURIComponent(cleanedCode);
-        
-        // Create a div with the mermaid class that will be processed by our renderer
-        const html = `<div class="mermaid" id="${id}" data-processed="false" data-content="${encodedContent}">${cleanedCode}</div>`;
-        
-        console.log(`Created mermaid HTML: ${html.substring(0, 100)}...`);
-        
-        // Set a marker in window to track mermaid diagrams
-        if (!window.mermaidDiagrams) {
-          window.mermaidDiagrams = [];
-        }
-        window.mermaidDiagrams.push({
-          id,
-          content: cleanedCode,
-          timestamp: Date.now()
-        });
-        
-        // Schedule a check for this specific diagram
-        setTimeout(() => {
-          const diagram = document.getElementById(id);
-          if (diagram) {
-            console.log(`Checking if diagram ${id} was processed`);
-            if (diagram.getAttribute('data-processed') !== 'true') {
-              console.log(`Diagram ${id} was not processed, forcing processing`);
-              processMermaidDiagrams();
-            }
-          } else {
-            console.warn(`Diagram ${id} not found in DOM`);
-          }
-        }, 1000);
-        
-        return html;
+        return `<div class="mermaid" id="${id}" data-content="${encodeURIComponent(code)}">${code}</div>`;
       }
       
       // For all other code blocks, use the original renderer
@@ -470,26 +324,17 @@ $(document).ready(function() {
   });
   
   // Mobile sidebar toggle
-  mobileSidebarToggle.on('click', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Mobile sidebar toggle clicked');
+  mobileSidebarToggle.on('click', function() {
     mobileSidebar.addClass('show');
     sidebarBackdrop.addClass('show');
   });
   
-  closeSidebarBtn.on('click', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Close sidebar button clicked');
+  closeSidebarBtn.on('click', function() {
     mobileSidebar.removeClass('show');
     sidebarBackdrop.removeClass('show');
   });
   
-  sidebarBackdrop.on('click', function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Sidebar backdrop clicked');
+  sidebarBackdrop.on('click', function() {
     mobileSidebar.removeClass('show');
     sidebarBackdrop.removeClass('show');
   });
@@ -1286,55 +1131,75 @@ How can I assist you today?`;
   
   // Helper functions
   function formatMessage(message) {
-    console.log('Formatting message:', message.substring(0, 50) + '...');
-    
+    // Process markdown with XSS protection
     try {
       // Check if markdown libraries are available
       if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
-        console.error('Markdown libraries not available');
-        return `<div class="markdown-content"><p>${escapeHtml(message)}</p></div>`;
+        throw new Error('Markdown libraries not available');
       }
       
-      // First, check for mermaid code blocks in the raw message
-      const hasMermaidCodeBlocks = message.includes('```mermaid') || message.includes('~~~mermaid');
+      // Simple detection of mermaid code blocks
+      const hasMermaidBlock = message.includes('```mermaid') || 
+                             message.includes('~~~mermaid');
       
-      if (hasMermaidCodeBlocks) {
-        console.log('Message contains mermaid code blocks, will need special processing');
+      if (hasMermaidBlock) {
+        // Log details about detected Mermaid blocks for debugging
+        console.log('Detected Mermaid code block in message');
         
-        // Find all mermaid code blocks for logging
+        // Find all Mermaid code blocks for debugging
         const mermaidRegex = /```mermaid\n([\s\S]*?)```|~~~mermaid\n([\s\S]*?)~~~/g;
         let match;
-        let matchCount = 0;
-        
         while ((match = mermaidRegex.exec(message)) !== null) {
-          matchCount++;
           const content = match[1] || match[2];
-          console.log(`Found mermaid block #${matchCount}:`, content.substring(0, 50) + '...');
+          console.log('Found Mermaid block with content:', content);
         }
       }
       
-      // Decode any HTML entities in the message first
-      const decodedMessage = decodeHtmlEntities(message);
+      let preprocessedMessage = message;
       
-      // Convert markdown to HTML
-      console.log('Converting markdown to HTML');
-      const rawHtml = marked.parse(decodedMessage);
-      
-      // Check if the raw HTML contains mermaid divs
-      const containsMermaidDiv = rawHtml.includes('class="mermaid"');
-      console.log('Raw HTML contains mermaid divs:', containsMermaidDiv);
-      
-      if (containsMermaidDiv) {
-        console.log('Raw HTML from markdown contains mermaid divs, sample:', 
-          rawHtml.substring(rawHtml.indexOf('class="mermaid"') - 50, rawHtml.indexOf('class="mermaid"') + 200));
+      // If it has mermaid content, decode HTML entities
+      if (hasMermaidBlock) {
+        console.log('Preprocessing message with HTML entities');
+        
+        // Simple entity decoding for known issues
+        preprocessedMessage = message
+          .replace(/--&gt;/g, '-->')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, '&');
       }
       
-      // Use permissive sanitization settings to preserve Mermaid diagrams
-      const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
+      // Don't escape HTML for mermaid diagrams
+      let contentToProcess;
+      
+      if (hasMermaidBlock) {
+        // For content with mermaid, skip HTML escaping
+        contentToProcess = preprocessedMessage;
+      } else {
+        // For normal content without mermaid, continue with HTML escaping
+        contentToProcess = escapeHtml(preprocessedMessage);
+      }
+      
+      // Render the markdown
+      const rawHtml = marked.parse(contentToProcess);
+      
+      if (hasMermaidBlock) {
+        // Check if Mermaid diagrams were properly generated
+        console.log('Checking generated Mermaid HTML');
+        
+        if (rawHtml.includes('class="mermaid"')) {
+          console.log('Mermaid divs found in output HTML');
+        } else {
+          console.warn('No Mermaid divs found in output HTML');
+        }
+      }
+      
+      // Sanitize the HTML to prevent XSS attacks
+      const cleanHtml = DOMPurify.sanitize(rawHtml, {
         USE_PROFILES: { html: true },
-        ADD_TAGS: ['mermaid'],
-        ADD_ATTR: ['target', 'data-content', 'data-processed', 'id'],
-        ALLOW_DATA_ATTR: true,
+        ADD_ATTR: ['target', 'data-processed', 'data-source'],
         ALLOWED_TAGS: [
           'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
           'p', 'br', 'hr', 'ol', 'ul', 'li', 
@@ -1343,97 +1208,35 @@ How can I assist you today?`;
           'tbody', 'tr', 'th', 'td', 'img', 'details', 
           'summary', 'del', 'input', 'svg', 'g', 'path',
           'circle', 'rect', 'polygon', 'ellipse', 'line',
-          'polyline', 'text', 'foreignObject', 'marker',
-          'mermaid'
+          'polyline', 'text', 'foreignObject', 'marker'
         ],
         ALLOWED_ATTR: [
           'href', 'src', 'alt', 'class', 'style', 'type', 'checked',
-          'data-processed', 'data-content', 'id', 'viewBox', 'd', 'fill',
+          'data-processed', 'data-source', 'id', 'viewBox', 'd', 'fill',
           'stroke', 'stroke-width', 'x', 'y', 'cx', 'cy', 'r', 'width', 
           'height', 'transform', 'points', 'marker-end', 'marker-start',
           'text-anchor', 'font-family', 'font-size', 'dominant-baseline'
-        ]
+        ],
+        ADD_TAGS: ['mermaid'],
+        ALLOWED_CLASSES: {
+          'div': ['mermaid', 'markdown-content']
+        }
       });
       
-      // Check if sanitized HTML contains mermaid divs
-      const containsMermaidDivAfterSanitize = sanitizedHtml.includes('class="mermaid"');
-      console.log('HTML after sanitization contains mermaid divs:', containsMermaidDivAfterSanitize);
-      
-      // Check for mermaid divs using DOM parsing
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = sanitizedHtml;
-      const mermaidDivs = tempDiv.querySelectorAll('.mermaid');
-      console.log(`Found ${mermaidDivs.length} mermaid divs using DOM parsing`);
-      
-      // If we have mermaid code blocks but no mermaid divs after parsing, our renderer isn't working correctly
-      if (hasMermaidCodeBlocks && mermaidDivs.length === 0) {
-        console.warn('Mermaid code blocks were detected but not converted to mermaid divs, attempting manual conversion');
-        
-        // Replace markdown mermaid code blocks with explicit mermaid divs
-        let modifiedMessage = message;
-        const mermaidCodeBlockRegex = /```mermaid\n([\s\S]*?)```|~~~mermaid\n([\s\S]*?)~~~/g;
-        let blockCount = 0;
-        
-        modifiedMessage = modifiedMessage.replace(mermaidCodeBlockRegex, (match, codeBlock1, codeBlock2) => {
-          blockCount++;
-          const codeBlock = (codeBlock1 || codeBlock2).trim();
-          const id = `mermaid-manual-${Date.now()}-${blockCount}`;
-          const encodedContent = encodeURIComponent(codeBlock);
-          
-          console.log(`Manually converting mermaid block #${blockCount} to div`);
-          
-          // Create HTML for mermaid diagram
-          return `<div class="mermaid" id="${id}" data-processed="false" data-content="${encodedContent}">${codeBlock}</div>`;
-        });
-        
-        if (blockCount > 0) {
-          console.log(`Manually converted ${blockCount} mermaid blocks to divs`);
-          
-          // Re-parse the modified message
-          const newRawHtml = marked.parse(modifiedMessage);
-          const newSanitizedHtml = DOMPurify.sanitize(newRawHtml, {
-            USE_PROFILES: { html: true },
-            ADD_TAGS: ['mermaid'],
-            ADD_ATTR: ['target', 'data-content', 'data-processed', 'id'],
-            ALLOW_DATA_ATTR: true
-          });
-          
-          // Check if our manual conversion worked
-          const tempDiv2 = document.createElement('div');
-          tempDiv2.innerHTML = newSanitizedHtml;
-          const mermaidDivsAfterFix = tempDiv2.querySelectorAll('.mermaid');
-          console.log(`After manual conversion, found ${mermaidDivsAfterFix.length} mermaid divs`);
-          
-          if (mermaidDivsAfterFix.length > 0) {
-            // Use our manual conversion result
-            const formattedHtml = `<div class="markdown-content">${newSanitizedHtml}</div>`;
-            
-            // Schedule mermaid processing
-            setTimeout(() => {
-              console.log('Processing mermaid diagrams after manual conversion');
-              processMermaidDiagrams();
-            }, 10);
-            
-            return formattedHtml;
-          }
-        }
-      }
-      
-      // Return the formatted HTML with standard processing
-      const formattedHtml = `<div class="markdown-content">${sanitizedHtml}</div>`;
-      
-      // Trigger diagram processing on the next tick if we found mermaid divs
-      if (mermaidDivs.length > 0) {
-        setTimeout(() => {
-          console.log('Triggering mermaid processing after markdown rendering');
-          processMermaidDiagrams();
-        }, 10);
-      }
-      
-      return formattedHtml;
+      // Add markdown class for styling
+      return `<div class="markdown-content">${cleanHtml}</div>`;
     } catch (error) {
       console.error('Error formatting message:', error);
-      return `<div class="markdown-content"><p>${escapeHtml(message)}</p></div>`;
+      
+      // Fallback to basic formatting
+      return message
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code>$1</code>');
     }
   }
   
@@ -1536,360 +1339,324 @@ How can I assist you today?`;
     }
   }
   
-  /**
-   * Process all unprocessed Mermaid diagrams in the document
-   */
+  // Function to process all unprocessed mermaid diagrams on the page
   function processMermaidDiagrams() {
-    // Verify that the Mermaid library is loaded
+    // Check if mermaid is loaded
     if (typeof mermaid === 'undefined') {
-      console.error('Mermaid library not loaded');
+      console.error('Mermaid library not loaded.');
       return;
     }
 
-    // Find all mermaid divs
-    const allMermaidDivs = document.querySelectorAll('div.mermaid, .mermaid');
-    console.log(`Found ${allMermaidDivs.length} total mermaid diagrams`);
+    // Find all unprocessed mermaid divs
+    const unprocessedDiagrams = Array.from(document.querySelectorAll('div.mermaid:not([data-processed="true"])'));
+    console.log(`Found ${unprocessedDiagrams.length} unprocessed mermaid diagrams.`);
     
-    // Log all mermaid divs for debugging
-    if (allMermaidDivs.length > 0) {
-      console.log('All mermaid divs:', allMermaidDivs);
-      
-      // Check each mermaid div to see if it has processed attribute
-      allMermaidDivs.forEach((div, i) => {
-        console.log(`Diagram #${i+1}:`, {
-          id: div.id || 'no-id',
-          processed: div.hasAttribute('data-processed'),
-          processedValue: div.getAttribute('data-processed'),
-          classes: div.className,
-          content: div.textContent.substring(0, 30) + '...'
-        });
-      });
-    }
-
-    // Find unprocessed mermaid divs using a more reliable approach
-    // Look for any element with mermaid class that doesn't have the data-processed attribute set to "true"
-    const unprocessedDiagrams = Array.from(document.querySelectorAll('.mermaid')).filter(div => {
-      return div.getAttribute('data-processed') !== 'true';
-    });
-    
-    console.log(`Found ${unprocessedDiagrams.length} unprocessed mermaid diagrams using filtered approach`);
-    
-    // If no diagrams to process, just return
+    // If no diagrams to process, add retry buttons to any that might be stuck
     if (unprocessedDiagrams.length === 0) {
+      setTimeout(addRetryButtonsToStuckDiagrams, 1000);
       return;
     }
 
     // Process each diagram
-    unprocessedDiagrams.forEach(diagram => {
-      // Generate unique ID for diagram if not already set
+    unprocessedDiagrams.forEach((diagram) => {
+      // Generate a unique ID if not already set
       if (!diagram.id) {
-        diagram.id = `mermaid-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        diagram.id = `mermaid-diagram-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       }
-      
-      // Get diagram content using the helper function
-      const content = getDiagramContent(diagram);
+
+      // Get the content - clean up any HTML entities in the content
+      let content = diagram.textContent.trim();
       
       // Skip empty diagrams
       if (!content) {
-        console.warn('Empty mermaid diagram found, skipping', diagram);
+        console.warn(`Empty diagram content in ${diagram.id}`);
         return;
       }
       
-      console.log(`Processing mermaid diagram: ${diagram.id} with content: ${content.substring(0, 50)}...`);
+      // Store original content in data attribute for later reference
+      // This is critical for retry functionality
+      diagram.setAttribute('data-content', content);
       
-      // Create loading container
+      console.log(`Processing diagram ${diagram.id} with content: ${content.substring(0, 30)}...`);
+      
+      // Show loading indicator
       showLoadingIndicator(diagram);
       
-      // Render the diagram
-      renderMermaidSafely(diagram, content)
-        .then(() => {
-          // Remove loading indicator when rendering is complete
-          const loadingContainer = diagram.querySelector('.mermaid-loading-container');
-          if (loadingContainer) {
-            loadingContainer.remove();
-          }
+      // Use our isolated rendering process
+      renderMermaidSafely(content, diagram.id)
+        .then(svg => {
+          // Hide loading indicator
+          hideLoadingIndicator(diagram);
           
-          // Mark as processed
+          // Set the SVG content
+          diagram.innerHTML = svg;
           diagram.setAttribute('data-processed', 'true');
-          console.log(`Successfully rendered diagram: ${diagram.id}`);
-          
-          // Run a debug check
-          setTimeout(debugMermaidDiagrams, 100);
+          console.log(`Successfully processed diagram ${diagram.id}`);
         })
         .catch(error => {
-          // Display error with enhanced formatting
-          displayMermaidError(diagram, error, content);
-          console.error(`Failed to render diagram: ${diagram.id}`, error);
+          // Hide loading indicator
+          hideLoadingIndicator(diagram);
           
-          // Run a debug check
-          setTimeout(debugMermaidDiagrams, 100);
+          console.error(`Failed to process diagram ${diagram.id}:`, error);
+          displayMermaidError(diagram, error, content);
         });
     });
+
+    // Add retry buttons to any diagrams that might be stuck
+    setTimeout(addRetryButtonsToStuckDiagrams, 3000);
   }
   
-  /**
-   * Shows a loading indicator in a mermaid diagram container
-   * @param {HTMLElement} diagram - The diagram element to show loading indicator in
-   */
+  // Helper function to show a loading indicator
   function showLoadingIndicator(diagram) {
-    // Create loading container
+    // Clear the diagram content first to avoid mixing with loading indicator
+    const originalContent = diagram.innerHTML;
+    diagram.setAttribute('data-original-content', originalContent);
+    
+    // Create a fresh loading indicator
+    diagram.classList.add('mermaid-loading');
+    
+    // Create a completely separate loading container
     const loadingContainer = document.createElement('div');
     loadingContainer.className = 'mermaid-loading-container';
+    loadingContainer.innerHTML = '<div class="mermaid-loading-indicator">Processing diagram...</div>';
     
-    // Create loading indicator
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'mermaid-loading-indicator';
-    loadingIndicator.textContent = 'Rendering diagram...';
-    
-    // Add to container
-    loadingContainer.appendChild(loadingIndicator);
-    
-    // Add to diagram
+    // Clear existing content and add loading indicator
+    diagram.innerHTML = '';
     diagram.appendChild(loadingContainer);
   }
   
-  /**
-   * Safely renders a Mermaid diagram in an isolated environment
-   * @param {HTMLElement} diagram - The diagram element to render into
-   * @param {string} content - The diagram content to render
-   * @returns {Promise} - Resolves when rendering is complete
-   */
-  function renderMermaidSafely(diagram, content) {
-    console.log(`Rendering diagram safely: ${diagram.id}`, { 
-      content: content.substring(0, 50),
-      contentLength: content.length
-    });
+  // Helper function to hide loading indicator
+  function hideLoadingIndicator(diagram) {
+    diagram.classList.remove('mermaid-loading');
     
-    // Extra validation - ensure content is clean
-    let cleanContent = content;
-    // Make sure we have a string
-    if (typeof cleanContent !== 'string') {
-      console.warn('Content is not a string, converting to string');
-      cleanContent = String(cleanContent || '');
-    }
-    
-    // Decode entities
-    cleanContent = decodeHtmlEntities(cleanContent);
-    
-    // Verify content has basic Mermaid structure
-    if (!cleanContent.includes('graph') && 
-        !cleanContent.includes('sequenceDiagram') &&
-        !cleanContent.includes('classDiagram') &&
-        !cleanContent.includes('flowchart') &&
-        !cleanContent.includes('gantt') &&
-        !cleanContent.includes('pie')) {
-      console.warn('Content may not be valid Mermaid syntax:', cleanContent);
-    }
-    
+    // Remove any loading containers
+    const loadingContainers = diagram.querySelectorAll('.mermaid-loading-container');
+    loadingContainers.forEach(container => container.remove());
+  }
+  
+  // Render Mermaid diagram with complete isolation
+  function renderMermaidSafely(content, id) {
     return new Promise((resolve, reject) => {
       try {
-        // Create a hidden sandbox element for rendering
-        const sandboxElement = document.createElement('div');
-        sandboxElement.style.position = 'absolute';
-        sandboxElement.style.left = '-9999px';
-        sandboxElement.style.width = '1000px';
-        sandboxElement.style.height = '1000px';
-        sandboxElement.style.opacity = '0';
-        sandboxElement.style.pointerEvents = 'none';
-        sandboxElement.id = `sandbox-${diagram.id}`;
-        sandboxElement.className = 'mermaid';
-        sandboxElement.textContent = cleanContent;
+        // Generate a unique ID for this render operation
+        const uniqueId = `render-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         
-        // Add to document body temporarily
-        document.body.appendChild(sandboxElement);
-        console.log(`Created sandbox element for diagram: ${diagram.id}`);
+        // Create a temporary, hidden div for rendering
+        const renderDiv = document.createElement('div');
+        renderDiv.id = uniqueId;
+        renderDiv.style.position = 'absolute';
+        renderDiv.style.visibility = 'hidden';
+        renderDiv.style.pointerEvents = 'none';
+        renderDiv.style.width = '1px';
+        renderDiv.style.height = '1px';
+        renderDiv.style.overflow = 'hidden';
+        renderDiv.style.top = '-9999px';
+        renderDiv.style.left = '-9999px';
         
-        // Use mermaid to render the diagram in the sandbox
-        console.log(`Calling mermaid.init on sandbox: ${sandboxElement.id}`);
+        // Add to document but outside normal flow
+        document.body.appendChild(renderDiv);
         
-        // Try the more direct render API first
-        try {
-          mermaid.render(`render-${diagram.id}`, cleanContent)
-            .then(result => {
-              console.log('Direct render succeeded:', result);
-              // Successfully rendered, now copy to original diagram
-              
-              // Clear the original diagram (but keep loading container if it exists)
-              const loadingContainer = diagram.querySelector('.mermaid-loading-container');
-              diagram.innerHTML = '';
-              if (loadingContainer) {
-                diagram.appendChild(loadingContainer);
-              }
-              
-              // Add the rendered SVG
-              diagram.innerHTML += result.svg;
-              
-              // Clean up the sandbox
-              if (document.body.contains(sandboxElement)) {
-                document.body.removeChild(sandboxElement);
-              }
-              
-              resolve();
-            })
-            .catch(err => {
-              console.error('Direct render failed, falling back to init:', err);
-              
-              // Fallback to mermaid.init
-              try {
-                mermaid.init(undefined, sandboxElement);
+        // Create a direct string with the content
+        const contentString = content.trim();
+        
+        // Log attempt for debugging
+        console.log(`Attempting to render with ID ${uniqueId}`);
+        
+        // Use a timeout to let the DOM settle
+        setTimeout(() => {
+          try {
+            // Directly call mermaid.render with the content string
+            mermaid.render(uniqueId, contentString)
+              .then(result => {
+                // Extract the SVG
+                const svg = result.svg;
                 
-                // Wait a moment for rendering to complete
-                setTimeout(() => {
-                  try {
-                    // Check if rendering was successful
-                    if (sandboxElement.querySelector('svg')) {
-                      console.log(`Successfully rendered SVG for diagram: ${diagram.id}`);
-                      // Copy the rendered SVG to the original diagram
-                      const svg = sandboxElement.querySelector('svg');
+                // Clean up
+                if (document.body.contains(renderDiv)) {
+                  document.body.removeChild(renderDiv);
+                }
+                
+                // Resolve with the SVG
+                resolve(svg);
+              })
+              .catch(renderError => {
+                console.error(`Direct rendering error:`, renderError);
+                
+                // Clean up
+                if (document.body.contains(renderDiv)) {
+                  document.body.removeChild(renderDiv);
+                }
+                
+                // Try a simple fallback if this was a parsing error
+                if (renderError.toString().includes('Parse error') || 
+                    renderError.toString().includes('Syntax error')) {
+                  
+                  console.log('Attempting fallback simple diagram');
+                  const fallbackContent = 'flowchart TD\n    A[Content] --> B[Could not be rendered]';
+                  
+                  // Create a new render div for the fallback
+                  const fallbackDiv = document.createElement('div');
+                  const fallbackId = `fallback-${Date.now()}`;
+                  fallbackDiv.id = fallbackId;
+                  fallbackDiv.style.position = 'absolute';
+                  fallbackDiv.style.visibility = 'hidden';
+                  fallbackDiv.style.top = '-9999px';
+                  document.body.appendChild(fallbackDiv);
+                  
+                  // Try rendering the fallback
+                  mermaid.render(fallbackId, fallbackContent)
+                    .then(fallbackResult => {
+                      const fallbackSvg = fallbackResult.svg;
                       
-                      // Clear the original diagram (but keep loading container if it exists)
-                      const loadingContainer = diagram.querySelector('.mermaid-loading-container');
-                      diagram.innerHTML = '';
-                      if (loadingContainer) {
-                        diagram.appendChild(loadingContainer);
+                      // Clean up
+                      if (document.body.contains(fallbackDiv)) {
+                        document.body.removeChild(fallbackDiv);
                       }
                       
-                      // Add the rendered SVG
-                      diagram.appendChild(svg.cloneNode(true));
+                      resolve(fallbackSvg);
+                    })
+                    .catch(fallbackError => {
+                      console.error('Even fallback diagram failed:', fallbackError);
                       
-                      // Clean up the sandbox
-                      document.body.removeChild(sandboxElement);
+                      // Clean up
+                      if (document.body.contains(fallbackDiv)) {
+                        document.body.removeChild(fallbackDiv);
+                      }
                       
-                      // Success
-                      resolve();
-                    } else {
-                      // No SVG was generated, consider it an error
-                      console.error(`No SVG generated for diagram: ${diagram.id}`);
-                      document.body.removeChild(sandboxElement);
-                      reject(new Error('Failed to generate diagram SVG'));
-                    }
-                  } catch (finalError) {
-                    // Handle errors during post-render processing
-                    console.error('Error after rendering:', finalError);
-                    try {
-                      document.body.removeChild(sandboxElement);
-                    } catch (e) {
-                      // Ignore cleanup errors
-                    }
-                    reject(finalError);
-                  }
-                }, 100);
-              } catch (initError) {
-                console.error('Init fallback also failed:', initError);
-                try {
-                  document.body.removeChild(sandboxElement);
-                } catch (e) {
-                  // Ignore cleanup errors
+                      reject(renderError); // Return the original error
+                    });
+                } else {
+                  // Not a parsing error, just reject
+                  reject(renderError);
                 }
-                reject(initError);
-              }
-            });
-        } catch (directRenderError) {
-          console.error('Error using direct render API:', directRenderError);
-          reject(directRenderError);
-        }
+              });
+          } catch (setupError) {
+            console.error('Setup error during render:', setupError);
+            
+            // Clean up
+            if (document.body.contains(renderDiv)) {
+              document.body.removeChild(renderDiv);
+            }
+            
+            reject(setupError);
+          }
+        }, 50);
       } catch (error) {
-        // Handle initial rendering errors
-        console.error('Error starting render process:', error);
+        console.error('Critical render setup error:', error);
         reject(error);
       }
     });
   }
   
-  /**
-   * Displays an error for a Mermaid diagram with formatted error details
-   * @param {HTMLElement} diagramElement - The diagram element to show error for
-   * @param {Error} error - The error that occurred
-   * @param {string} originalContent - The original diagram content
-   */
-  function displayMermaidError(diagramElement, error, originalContent) {
-    console.error('Mermaid rendering error:', error);
+  // Function to display a Mermaid error with more details
+  function displayMermaidError(diagram, error, content) {
+    console.error('Mermaid error:', error);
     
-    // Mark as processed to prevent further attempts
-    diagramElement.setAttribute('data-processed', 'true');
-    diagramElement.setAttribute('data-error', 'true');
-    
-    // Clear any existing content
-    diagramElement.innerHTML = '';
+    // Remove loading class if present
+    diagram.classList.remove('mermaid-loading');
     
     // Create error container
     const errorContainer = document.createElement('div');
     errorContainer.className = 'mermaid-error';
+    errorContainer.style.padding = '10px';
+    errorContainer.style.border = '1px solid #fed7d7';
+    errorContainer.style.borderRadius = '4px';
+    errorContainer.style.backgroundColor = '#fff5f5';
+    errorContainer.style.color = '#c53030';
+    errorContainer.style.fontFamily = 'monospace';
+    errorContainer.style.margin = '10px 0';
     
-    // Add error title
-    const errorTitle = document.createElement('div');
-    errorTitle.className = 'mermaid-error-title';
-    errorTitle.textContent = 'Mermaid Diagram Error';
-    errorContainer.appendChild(errorTitle);
+    // Create error header
+    const errorHeader = document.createElement('div');
+    errorHeader.style.fontWeight = 'bold';
+    errorHeader.style.marginBottom = '8px';
+    errorHeader.textContent = 'Diagram Rendering Error';
+    errorContainer.appendChild(errorHeader);
     
-    // Add error message
-    const errorMessage = document.createElement('div');
-    errorMessage.className = 'mermaid-error-message';
+    // Parse and add the error message
+    let errorMessage = error.toString();
     
-    // Parse error message to extract line number
-    let lineNumber = null;
-    let errorMsg = error.message || 'Unknown error';
-    
-    // Check if it's a parse error with line information
-    const lineMatch = errorMsg.match(/Parse error on line (\d+)/i);
-    if (lineMatch && lineMatch[1]) {
-      lineNumber = parseInt(lineMatch[1], 10);
-    }
-    
-    errorMessage.textContent = errorMsg;
-    errorContainer.appendChild(errorMessage);
-    
-    // Add code section with the problem highlighted if we have line information
-    if (originalContent && originalContent.length > 0) {
-      const codeContainer = document.createElement('div');
-      codeContainer.className = 'mermaid-error-code';
-      
-      const lines = originalContent.split('\n');
-      const startLine = Math.max(0, lineNumber ? lineNumber - 3 : 0);
-      const endLine = Math.min(lines.length, lineNumber ? lineNumber + 2 : lines.length);
-      
-      // Display relevant code snippet with line numbers
-      for (let i = startLine; i < endLine; i++) {
-        const lineContainer = document.createElement('div');
+    // Special handling for parse errors
+    if (errorMessage.includes('Parse error') || errorMessage.includes('Syntax error')) {
+      const match = errorMessage.match(/Parse error on line (\d+)/);
+      if (match && match[1] && content) {
+        const lineNumber = parseInt(match[1]);
+        errorMessage = `Syntax error on line ${lineNumber}`;
         
-        // Line number
-        const lineNumberSpan = document.createElement('span');
-        lineNumberSpan.className = 'mermaid-error-line-number';
-        lineNumberSpan.textContent = (i + 1).toString().padStart(2, '0');
-        lineContainer.appendChild(lineNumberSpan);
-        
-        // Line content
-        const lineContent = document.createElement('span');
-        lineContent.textContent = lines[i];
-        if (lineNumber && i + 1 === lineNumber) {
-          lineContent.className = 'mermaid-error-line-highlight';
+        // Show the problematic line of code with some context
+        const lines = content.split('\n');
+        if (lines.length >= lineNumber) {
+          const errorLineElement = document.createElement('pre');
+          errorLineElement.style.margin = '8px 0';
+          errorLineElement.style.padding = '8px';
+          errorLineElement.style.backgroundColor = '#2d3748';
+          errorLineElement.style.color = '#e2e8f0';
+          errorLineElement.style.borderRadius = '4px';
+          errorLineElement.style.overflowX = 'auto';
+          
+          // Add line context (few lines before and after)
+          const startLine = Math.max(0, lineNumber - 3);
+          const endLine = Math.min(lines.length, lineNumber + 2);
+          
+          for (let i = startLine; i < endLine; i++) {
+            const lineNumStr = `${i + 1}`.padStart(3, ' ');
+            const lineContent = lines[i] || '';
+            const isErrorLine = i + 1 === lineNumber;
+            
+            if (isErrorLine) {
+              errorLineElement.innerHTML += `<span style="color: #f56565; font-weight: bold">${lineNumStr}: ${escapeHtml(lineContent)}</span>\n`;
+            } else {
+              errorLineElement.innerHTML += `<span style="color: #a0aec0">${lineNumStr}: ${escapeHtml(lineContent)}</span>\n`;
+            }
+          }
+          
+          errorContainer.appendChild(errorLineElement);
         }
-        lineContainer.appendChild(lineContent);
         
-        codeContainer.appendChild(lineContainer);
+        // Add helpful hint
+        const hintElement = document.createElement('div');
+        hintElement.style.marginTop = '8px';
+        hintElement.style.fontSize = '0.9em';
+        hintElement.innerHTML = `
+          <strong>Hints:</strong>
+          <ul style="margin-top: 4px; padding-left: 20px;">
+            <li>Check syntax on line ${lineNumber}</li>
+            <li>Make sure diagram starts with diagram type (flowchart TD, sequenceDiagram, etc.)</li>
+            <li>Verify all nodes and connections have proper syntax</li>
+          </ul>
+        `;
+        errorContainer.appendChild(hintElement);
       }
-      
-      errorContainer.appendChild(codeContainer);
-      
-      // Add hint for common issues
-      const hint = document.createElement('div');
-      hint.className = 'mermaid-error-hint';
-      
-      if (errorMsg.includes('Expected')) {
-        hint.textContent = 'Hint: Check your syntax for missing brackets, quotes, or semicolons at the highlighted line.';
-      } else if (errorMsg.includes('SCALE')) {
-        hint.textContent = 'Hint: There might be an issue with scaling values. Use valid numbers for width/height.';
-      } else if (errorMsg.includes('classDef')) {
-        hint.textContent = 'Hint: Ensure class definitions use the correct syntax: classDef className fill:#color,stroke:#color,etc.';
-      } else {
-        hint.textContent = 'Hint: Review the Mermaid syntax documentation for the correct format for your diagram type.';
-      }
-      
-      errorContainer.appendChild(hint);
+    }
+    // Display general error if not a parse error
+    else {
+      const messageElement = document.createElement('div');
+      messageElement.textContent = errorMessage;
+      errorContainer.appendChild(messageElement);
     }
     
-    // Append error container to diagram element
-    diagramElement.appendChild(errorContainer);
+    // Set the error content
+    diagram.innerHTML = '';
+    diagram.appendChild(errorContainer);
+    
+    // Add retry button
+    const retryButton = document.createElement('button');
+    retryButton.className = 'mermaid-retry-button';
+    retryButton.textContent = 'Retry Diagram';
+    retryButton.style.display = 'block';
+    retryButton.style.margin = '10px auto';
+    retryButton.style.padding = '5px 10px';
+    retryButton.style.backgroundColor = '#4f46e5';
+    retryButton.style.color = 'white';
+    retryButton.style.border = 'none';
+    retryButton.style.borderRadius = '4px';
+    retryButton.style.cursor = 'pointer';
+    
+    retryButton.addEventListener('click', function() {
+      retryRenderDiagram(diagram);
+    });
+    
+    diagram.appendChild(retryButton);
   }
   
   // Apply syntax highlighting to code blocks and process mermaid diagrams
@@ -1902,20 +1669,8 @@ How can I assist you today?`;
         });
       }
       
-      // Process mermaid diagrams with a short delay to let DOM settle
-      console.log('Scheduling mermaid processing after syntax highlighting');
-      setTimeout(() => {
-        processMermaidDiagrams();
-        
-        // Re-check after processing
-        setTimeout(() => {
-          const unprocessed = document.querySelectorAll('.mermaid:not([data-processed="true"])');
-          if (unprocessed.length > 0) {
-            console.log(`Found ${unprocessed.length} diagrams still unprocessed after initial rendering, trying again`);
-            processMermaidDiagrams();
-          }
-        }, 300);
-      }, 50);
+      // Process mermaid diagrams
+      processMermaidDiagrams();
     } catch (e) {
       console.error('Error applying syntax highlighting:', e);
     }
@@ -1923,51 +1678,36 @@ How can I assist you today?`;
   
   // Add mermaid error styles
   function addMermaidErrorStyles() {
-    const styleElement = document.createElement('style');
-    styleElement.textContent = `
-      .mermaid-error {
-        color: #f44336;
+    const style = document.createElement('style');
+    style.textContent = `
+      .syntax-error-in-text {
+        background-color: rgba(255, 50, 50, 0.2);
         padding: 10px;
-        margin: 10px 0;
-        border: 1px solid #f44336;
-        border-radius: 4px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 50, 50, 0.5);
+        margin-top: 10px;
         font-family: monospace;
         white-space: pre-wrap;
-        background-color: rgba(244, 67, 54, 0.05);
+        font-size: 14px;
+        color: #ffcccc;
       }
-      .mermaid-error-title {
-        font-weight: bold;
-        margin-bottom: 10px;
-        font-size: 1.1em;
-      }
-      .mermaid-error-message {
-        margin-bottom: 8px;
-      }
-      .mermaid-error-code {
-        margin: 10px 0;
+      
+      .mermaid-error {
+        background-color: rgba(255, 50, 50, 0.2);
         padding: 10px;
-        background-color: rgba(0, 0, 0, 0.05);
-        border-radius: 4px;
-        overflow-x: auto;
-      }
-      .mermaid-error-line-number {
-        color: #888;
-        margin-right: 10px;
-        user-select: none;
-      }
-      .mermaid-error-line-highlight {
-        background-color: rgba(255, 214, 0, 0.3);
-        font-weight: bold;
-      }
-      .mermaid-error-hint {
+        border-radius: 5px;
+        border: 1px solid rgba(255, 50, 50, 0.5);
         margin-top: 10px;
-        font-style: italic;
+        font-family: monospace;
+        white-space: pre-wrap;
+        font-size: 14px;
+        color: #ffcccc;
       }
     `;
-    document.head.appendChild(styleElement);
+    document.head.appendChild(style);
   }
   
-  // Force rendering of all mermaid diagrams using isolated approach
+  // Force rendering of all mermaid diagrams using direct approach with mermaid API
   function forceMermaidRendering() {
     console.log('Force rendering all mermaid diagrams');
     
@@ -1976,319 +1716,258 @@ How can I assist you today?`;
       return;
     }
     
-    // Initialize mermaid with proper settings
-    mermaid.initialize({
-      startOnLoad: false,  // Don't automatically process on load
-      securityLevel: 'loose',  // Allow rendering to work properly
-      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default'
-    });
-    
     try {
-      // Find only unprocessed mermaid divs
-      const unprocessedDiagrams = document.querySelectorAll('div.mermaid:not([data-processed="true"])');
-      console.log(`Found ${unprocessedDiagrams.length} unprocessed mermaid diagrams`);
+      // Find ALL mermaid divs regardless of processed status
+      const allDiagrams = document.querySelectorAll('div.mermaid');
+      console.log(`Total mermaid divs: ${allDiagrams.length}`);
       
-      // If no diagrams found, just return
-      if (unprocessedDiagrams.length === 0) {
-        console.log('No unprocessed mermaid divs found');
+      // If no diagrams found, try to find potential missed markdown code blocks
+      if (allDiagrams.length === 0) {
+        // Look for code blocks that might contain mermaid syntax
+        const codeBlocks = document.querySelectorAll('pre code');
+        const potentialMermaidBlocks = Array.from(codeBlocks).filter(block => {
+          const content = block.textContent || '';
+          return content.includes('graph ') || 
+                 content.includes('flowchart ') || 
+                 content.includes('sequenceDiagram') ||
+                 content.includes('classDiagram') ||
+                 content.includes('stateDiagram') ||
+                 content.includes('gantt') ||
+                 content.includes('pie') ||
+                 content.includes('gitGraph');
+        });
+        
+        if (potentialMermaidBlocks.length > 0) {
+          console.log(`Found ${potentialMermaidBlocks.length} potential mermaid code blocks that weren't detected`);
+          
+          potentialMermaidBlocks.forEach((block, index) => {
+            try {
+              // Get the parent element (pre tag)
+              const pre = block.parentElement;
+              if (!pre) return;
+              
+              // Create a new mermaid div
+              const mermaidDiv = document.createElement('div');
+              mermaidDiv.className = 'mermaid';
+              mermaidDiv.id = `mermaid-converted-${Date.now()}-${index}`;
+              mermaidDiv.textContent = block.textContent;
+              
+              // Replace the pre with the mermaid div
+              pre.parentNode.replaceChild(mermaidDiv, pre);
+              
+              // Now render this new div
+              const content = mermaidDiv.textContent.trim();
+              if (!content) {
+                console.warn(`Converted diagram #${index+1} has no content to render`);
+                mermaidDiv.innerHTML = '<div class="mermaid-error">Empty diagram content</div>';
+                return;
+              }
+              
+              // Add loading indicator
+              mermaidDiv.classList.add('mermaid-loading');
+              mermaidDiv.innerHTML = '<div class="mermaid-loading-indicator">Rendering diagram...</div>';
+              
+              mermaid.render(`render-${mermaidDiv.id}`, content)
+                .then(result => {
+                  mermaidDiv.classList.remove('mermaid-loading');
+                  mermaidDiv.innerHTML = result.svg;
+                  mermaidDiv.setAttribute('data-processed', 'true');
+                  console.log(`Successfully converted and rendered code block as diagram #${index + 1}`);
+                })
+                .catch(err => {
+                  mermaidDiv.classList.remove('mermaid-loading');
+                  console.error(`Failed to render converted code block #${index + 1}:`, err);
+                  // Display error in the mermaid div
+                  displayMermaidError(mermaidDiv, err, content);
+                });
+            } catch (err) {
+              console.error(`Error converting code block #${index + 1} to mermaid:`, err);
+            }
+          });
+        }
+        
+        console.log('No explicit mermaid divs found');
         return;
       }
       
-      // Process diagrams
-      processMermaidDiagrams();
+      // Process all diagrams, including those marked as processed
+      allDiagrams.forEach((diagram, index) => {
+        try {
+          // Generate a unique ID if missing
+          if (!diagram.id) {
+            diagram.id = `mermaid-force-${Date.now()}-${index}`;
+          }
+          
+          // Clear the processed attribute to force re-rendering
+          diagram.removeAttribute('data-processed');
+          
+          // Get content and clean it
+          const content = diagram.textContent.trim();
+          if (!content) {
+            console.warn(`Diagram #${index + 1} has no content to render`);
+            displayMermaidError(diagram, new Error("Empty diagram content"), "");
+            return;
+          }
+          
+          console.log(`Force rendering diagram #${index + 1} with content: ${content.substring(0, 30)}...`);
+          
+          // Store the content for rendering
+          diagram.setAttribute('data-content', content);
+          
+          // Preserve the original content before adding loading indicator
+          const contentBackup = diagram.textContent;
+          
+          // Add loading indicator
+          diagram.classList.add('mermaid-loading');
+          diagram.innerHTML = '<div class="mermaid-loading-indicator">Rendering diagram...</div>';
+          
+          // Direct rendering approach using render API
+          mermaid.render(`render-${diagram.id}`, content)
+            .then(result => {
+              // Remove loading class
+              diagram.classList.remove('mermaid-loading');
+              
+              // Replace the content with rendered SVG
+              diagram.innerHTML = result.svg;
+              diagram.setAttribute('data-processed', 'true');
+              console.log(`Successfully force rendered diagram #${index + 1}`);
+            })
+            .catch(err => {
+              // Remove loading class
+              diagram.classList.remove('mermaid-loading');
+              
+              console.error(`Failed to force render diagram #${index + 1}:`, err);
+              
+              // Restore original content
+              diagram.textContent = contentBackup;
+              
+              displayMermaidError(diagram, err, content);
+            });
+        } catch (err) {
+          // Remove loading class if it exists
+          if (diagram) {
+            diagram.classList.remove('mermaid-loading');
+            console.error(`Error force processing diagram #${index + 1}:`, err);
+            displayMermaidError(diagram, err, diagram.textContent);
+          } else {
+            console.error(`Error with null diagram in force rendering:`, err);
+          }
+        }
+      });
     } catch (err) {
       console.error('Error in forceMermaidRendering:', err);
     }
   }
   
-  // Enable observers to process mermaid diagrams as they are added to the DOM
-  function enableMermaidObserver() {
-    if (typeof MutationObserver !== 'undefined') {
-      const observer = new MutationObserver(mutations => {
-        // Check if any new mermaid diagrams were added
-        let hasMermaidDiagrams = false;
+  // Function to add retry buttons to stuck diagrams
+  function addRetryButtonsToStuckDiagrams() {
+    console.log('Checking for stuck diagrams...');
+
+    const allDiagrams = document.querySelectorAll('div.mermaid');
+    let stuckDiagrams = 0;
+
+    allDiagrams.forEach(diagram => {
+      // Check if this diagram is still loading or has an error message
+      const isStuck = diagram.classList.contains('mermaid-loading') || 
+                      (diagram.querySelector('.mermaid-error') !== null);
+      
+      // Check if the diagram has a retry button already
+      const hasRetryButton = diagram.querySelector('.mermaid-retry-button') !== null;
+      
+      if (isStuck && !hasRetryButton) {
+        stuckDiagrams++;
+        console.log(`Found stuck diagram: ${diagram.id}`);
         
-        mutations.forEach(mutation => {
-          if (mutation.type === 'childList') {
-            const newNodes = Array.from(mutation.addedNodes);
-            
-            // Check if any added nodes contain mermaid diagrams
-            newNodes.forEach(node => {
-              if (node.nodeType === 1) { // Element node
-                // Check if the node itself is a mermaid diagram
-                if (node.classList && node.classList.contains('mermaid')) {
-                  hasMermaidDiagrams = true;
-                }
-                
-                // Check if node contains mermaid diagrams
-                const containsMermaid = node.querySelectorAll && node.querySelectorAll('.mermaid').length > 0;
-                if (containsMermaid) {
-                  hasMermaidDiagrams = true;
-                }
-              }
-            });
-          }
+        // Create retry button
+        const retryButton = document.createElement('button');
+        retryButton.className = 'mermaid-retry-button';
+        retryButton.textContent = 'Retry Rendering';
+        retryButton.style.display = 'block';
+        retryButton.style.margin = '10px auto';
+        retryButton.style.padding = '5px 10px';
+        retryButton.style.backgroundColor = '#4f46e5';
+        retryButton.style.color = 'white';
+        retryButton.style.border = 'none';
+        retryButton.style.borderRadius = '4px';
+        retryButton.style.cursor = 'pointer';
+        
+        // Add click event to retry the rendering
+        retryButton.addEventListener('click', function() {
+          retryRenderDiagram(diagram);
         });
         
-        // If new mermaid diagrams were added, process them
-        if (hasMermaidDiagrams) {
-          console.log('Detected new mermaid diagrams, processing...');
-          setTimeout(() => {
-            processMermaidDiagrams();
-          }, 100);
-        }
-      });
-      
-      // Start observing the entire document
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-      
-      console.log('Mermaid observer enabled');
+        // Add the button to the diagram
+        diagram.appendChild(retryButton);
+      }
+    });
+    
+    if (stuckDiagrams > 0) {
+      console.log(`Added retry buttons to ${stuckDiagrams} stuck diagrams`);
+    } else {
+      console.log('No stuck diagrams found');
     }
   }
   
-  /**
-   * Safely extracts mermaid diagram content from an element
-   * @param {HTMLElement} diagram - The diagram element to get content from
-   * @returns {string} - The cleaned diagram content
-   */
-  function getDiagramContent(diagram) {
-    console.log('Extracting content from diagram:', diagram.id || 'unnamed');
+  // Function to retry rendering a specific diagram
+  function retryRenderDiagram(diagram) {
+    if (!diagram || typeof mermaid === 'undefined') return;
     
-    // Try to get content from data attribute first (this is most reliable)
-    let content = diagram.getAttribute('data-content');
-    
-    // If it's URL encoded, decode it
-    if (content && content.indexOf('%') !== -1) {
-      try {
-        content = decodeURIComponent(content);
-        console.log('Decoded content from data-content attribute');
-      } catch (e) {
-        console.warn('Error decoding content:', e);
-      }
-    }
-    
-    // If no content from data attribute, use text content as fallback
-    if (!content) {
-      content = diagram.textContent.trim();
-      console.log('Using textContent as fallback:', content.substring(0, 30) + '...');
+    try {
+      console.log(`Retrying diagram rendering for ${diagram.id}`);
       
-      // Store in data attribute for future reference
-      if (content) {
-        diagram.setAttribute('data-content', encodeURIComponent(content));
-        console.log('Stored content in data-content attribute');
-      }
-    }
-    
-    // Last resort - if the content is empty but diagram has children, 
-    // it might be a pre-rendered diagram or one with nested elements
-    if (!content && diagram.children.length > 0) {
-      console.log('Content is empty but diagram has children, attempting to extract content from HTML structure');
+      // Get content from data attributes ONLY - never from DOM elements
+      let content = null;
       
-      // Check if it has a pre or code element that might contain the source
-      const preElement = diagram.querySelector('pre, code');
-      if (preElement) {
-        content = preElement.textContent.trim();
-        console.log('Extracted content from nested pre/code element:', content.substring(0, 30) + '...');
-      } else {
-        // Try to serialize the diagram's content excluding any SVG or error messages
-        const tempClone = diagram.cloneNode(true);
-        const svgElements = tempClone.querySelectorAll('svg');
-        const errorElements = tempClone.querySelectorAll('.mermaid-error, .mermaid-loading-container');
-        
-        // Remove SVG and error elements before getting content
-        svgElements.forEach(svg => svg.remove());
-        errorElements.forEach(err => err.remove());
-        
-        content = tempClone.textContent.trim();
-        console.log('Extracted content after removing SVG/errors:', content.substring(0, 30) + '...');
+      // Try data-content first
+      if (diagram.hasAttribute('data-content')) {
+        content = diagram.getAttribute('data-content');
+        console.log('Found content in data-content attribute');
       }
-      
-      // Store the extracted content
-      if (content) {
-        diagram.setAttribute('data-content', encodeURIComponent(content));
-        console.log('Stored extracted content in data-content attribute');
-      }
-    }
-    
-    // If still no content, check if this is wrapped in a code block
-    if (!content && diagram.parentElement) {
-      const parent = diagram.parentElement;
-      if (parent.tagName === 'PRE' || parent.tagName === 'CODE') {
-        content = parent.textContent.trim();
-        console.log('Extracted content from parent pre/code element:', content.substring(0, 30) + '...');
-        
-        if (content) {
-          diagram.setAttribute('data-content', encodeURIComponent(content));
-          console.log('Stored parent content in data-content attribute');
+      // Try data-source next
+      else if (diagram.hasAttribute('data-source')) {
+        try {
+          content = decodeURIComponent(diagram.getAttribute('data-source'));
+          console.log('Found and decoded content from data-source attribute');
+        } catch (e) {
+          console.error("Error decoding source:", e);
         }
       }
-    }
-    
-    // Ensure the content is properly cleaned
-    if (content) {
-      // Clean up any entities
-      content = decodeHtmlEntities(content);
       
-      // Remove any HTML tags that might have been introduced
-      content = content.replace(/<[^>]*>/g, '');
-      
-      console.log('Final cleaned content:', content.substring(0, 30) + '...');
-    } else {
-      console.warn('Could not extract any content from diagram');
-    }
-    
-    return content || '';
-  }
-
-  /**
-   * Debug function to check all mermaid diagrams on the page
-   */
-  function debugMermaidDiagrams() {
-    // Find both with class selector and with more specific div.mermaid
-    const allDiagrams = document.querySelectorAll('.mermaid');
-    const allDiagramsAlt = document.querySelectorAll('div.mermaid');
-    
-    // Find by processed status
-    const processed = document.querySelectorAll('.mermaid[data-processed="true"]');
-    const explicitlyUnprocessed = document.querySelectorAll('.mermaid[data-processed="false"]');
-    const withoutProcessedAttr = document.querySelectorAll('.mermaid:not([data-processed])');
-    const implicitlyUnprocessed = Array.from(document.querySelectorAll('.mermaid')).filter(div => {
-      return div.getAttribute('data-processed') !== 'true';
-    });
-    
-    // Find by content
-    const withErrors = document.querySelectorAll('.mermaid[data-error="true"]');
-    const withSVG = document.querySelectorAll('.mermaid svg');
-    const empty = document.querySelectorAll('.mermaid:empty');
-    
-    console.log('==== MERMAID DIAGRAMS DEBUG ====');
-    console.log(`Total diagrams (.mermaid): ${allDiagrams.length}`);
-    console.log(`Total diagrams (div.mermaid): ${allDiagramsAlt.length}`);
-    console.log(`Explicitly processed: ${processed.length}`);
-    console.log(`Explicitly unprocessed: ${explicitlyUnprocessed.length}`);
-    console.log(`Without processed attr: ${withoutProcessedAttr.length}`);
-    console.log(`Implicitly unprocessed: ${implicitlyUnprocessed.length}`);
-    console.log(`With errors: ${withErrors.length}`);
-    console.log(`With SVG: ${withSVG.length}`);
-    console.log(`Empty diagrams: ${empty.length}`);
-    
-    // Check individual diagrams
-    allDiagrams.forEach((diagram, index) => {
-      const id = diagram.id || `unnamed-${index}`;
-      const hasContent = !!diagram.textContent.trim();
-      const hasDataContent = !!diagram.getAttribute('data-content');
-      const isProcessed = diagram.getAttribute('data-processed') === 'true';
-      const hasProcessedAttr = diagram.hasAttribute('data-processed');
-      const hasError = diagram.getAttribute('data-error') === 'true';
-      const hasSvg = !!diagram.querySelector('svg');
-      const childNodes = diagram.childNodes.length;
-      
-      // Initially set all diagrams' data-processed to false if not set
-      if (!hasProcessedAttr) {
-        diagram.setAttribute('data-processed', 'false');
-        console.log(`Setting data-processed="false" for diagram ${id}`);
+      // If no content found from data attributes, use a fallback diagram
+      if (!content || content.trim() === '') {
+        console.warn('No content found in data attributes, using fallback diagram');
+        content = 'flowchart TD\n    A[Content Missing] --> B[Please try again]';
       }
       
-      console.log(`Diagram #${index + 1} (${id}):`, {
-        isProcessed,
-        hasProcessedAttr,
-        hasContent,
-        hasDataContent,
-        hasError,
-        hasSvg,
-        childNodes,
-        contentPreview: diagram.textContent.substring(0, 30),
-        dataContentLength: hasDataContent ? diagram.getAttribute('data-content').length : 0
-      });
-    });
-    
-    console.log('================================');
-    
-    // Return true if everything looks good (all diagrams are either processed with SVG or have errors)
-    return implicitlyUnprocessed.length === 0 || 
-      (withSVG.length + withErrors.length === allDiagrams.length);
-  }
-
-  // Add a global diagnostic function that can be called from the console
-  window.diagnoseMermaid = function() {
-    console.log('Running Mermaid diagnostic...');
-    
-    // Log Mermaid version
-    if (typeof mermaid !== 'undefined') {
-      console.log(`Mermaid version: ${mermaid.version}`);
-    } else {
-      console.error('Mermaid library not loaded!');
-      return false;
-    }
-    
-    // Run the debug function
-    const result = debugMermaidDiagrams();
-    
-    // Force a re-rendering attempt
-    console.log('Attempting to reprocess all diagrams...');
-    processMermaidDiagrams();
-    
-    // Additional rendering with direct mermaid.init call
-    console.log('Attempting direct mermaid.init call...');
-    try {
-      mermaid.init(undefined, document.querySelectorAll('.mermaid:not([data-processed="true"])'));
-      console.log('Direct mermaid.init call completed');
-    } catch (err) {
-      console.error('Error with direct mermaid.init call:', err);
-    }
-    
-    // Final debug check after processing
-    setTimeout(debugMermaidDiagrams, 500);
-    return result;
-  };
-
-  // Make sure mobile sidebar toggle works
-  function setupMobileSidebar() {
-    console.log('Setting up mobile sidebar');
-    
-    const toggleBtn = document.getElementById('mobile-sidebar-toggle');
-    const closeBtn = document.getElementById('close-sidebar-btn');
-    const backdrop = document.getElementById('sidebar-backdrop');
-    const sidebar = document.getElementById('mobile-topics-sidebar');
-    
-    if (toggleBtn && sidebar && backdrop) {
-      toggleBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        console.log('Toggle button clicked (direct event)');
-        sidebar.classList.add('show');
-        backdrop.classList.add('show');
-      });
+      // Trim and clean the content
+      content = content.trim();
+      console.log(`Diagram content to render: ${content.substring(0, 30)}...`);
       
-      if (closeBtn) {
-        closeBtn.addEventListener('click', function(e) {
-          e.preventDefault();
-          console.log('Close button clicked (direct event)');
-          sidebar.classList.remove('show');
-          backdrop.classList.remove('show');
+      // Show a loading indicator
+      showLoadingIndicator(diagram);
+      
+      // Use completely isolated rendering
+      renderMermaidSafely(content, diagram.id)
+        .then(svg => {
+          // Hide loading indicator
+          hideLoadingIndicator(diagram);
+          
+          // Set the SVG content
+          diagram.innerHTML = svg;
+          diagram.setAttribute('data-processed', 'true');
+          console.log('Successfully rendered diagram');
+        })
+        .catch(error => {
+          // Hide loading indicator
+          hideLoadingIndicator(diagram);
+          
+          console.error('Failed to render diagram:', error);
+          displayMermaidError(diagram, error, content);
         });
-      }
-      
-      backdrop.addEventListener('click', function(e) {
-        e.preventDefault();
-        console.log('Backdrop clicked (direct event)');
-        sidebar.classList.remove('show');
-        backdrop.classList.remove('show');
-      });
-      
-      console.log('Mobile sidebar events set up successfully');
-    } else {
-      console.error('Mobile sidebar elements not found:', {
-        toggleBtn: !!toggleBtn,
-        closeBtn: !!closeBtn,
-        backdrop: !!backdrop,
-        sidebar: !!sidebar
-      });
+    } catch (error) {
+      console.error('Error in retry rendering:', error);
+      hideLoadingIndicator(diagram);
+      displayMermaidError(diagram, error, 'Error setting up rendering');
     }
   }
-
-  // Call the setup function after DOM is ready
-  setTimeout(setupMobileSidebar, 500);
 });

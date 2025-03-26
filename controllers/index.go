@@ -18,6 +18,7 @@ type ChatRequest struct {
 	Topic    string `json:"topic" binding:"required"`
 	File     *File  `json:"file,omitempty"`
 	ChatUUID string `json:"chat_uuid" binding:"required"`
+	System   string `json:"system,omitempty"`
 }
 
 type File struct {
@@ -159,6 +160,11 @@ func handleChat(c *gin.Context) {
 		System:      "You are a helpful AI assistant.",
 		MaxTokens:   4096,
 		Temperature: 0.7,
+	}
+
+	// Use custom system prompt if provided
+	if req.System != "" {
+		opts.System = req.System
 	}
 
 	// Set up streaming response
